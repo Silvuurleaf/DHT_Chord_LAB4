@@ -1,0 +1,25 @@
+
+"""
+Add first node to start a new network.
+    Create a node and start it's dispatch loop, setting predecessor,
+    successor, and finger table entries appropriately.
+    Network must have at least 128 possible nodes. (M=7, NODES=2^^7=128)
+
+Add additional nodes to the network, starting at any active node.
+    - Create a node and start it's dispatch loop.
+    - Find the appropriate point in the network to add it based on SHA1 hash of
+        node name.
+    - Insert the new node, setting predecessor, successor,
+        and finger table entries appropriately.
+    - Ensure the new node is responsible for the appropriate key values.
+    - Cause all nodes to update their own finger tables. Network must demonstrate
+        support of at least 16 nodes.
+
+Populate node finger tables
+
+Update Finger Tables
+
+Identify correct predecessor for any node
+
+"""
+
