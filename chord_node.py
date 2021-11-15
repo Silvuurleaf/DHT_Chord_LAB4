@@ -115,8 +115,13 @@ class ChordNode(object):
     @staticmethod
     def call_rpc(target_node, message):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+
+            print("Target Node: {}".format(target_node))
+            port_number = CHORD_MAP[target_node]
+            address = ('localhost', port_number)
+
             s.settimeout(1.5)
-            s.connect(target_node)  # connect to nodes address
+            s.connect(address)  # connect to nodes address
             # send entire buffer and serialize a HELLO msg for server
             s.sendall(pickle.dumps(message))
 
@@ -158,7 +163,12 @@ class ChordNode(object):
         print("Dispatching")
 
         if method == 'FIND_SUCCESSOR':
-            return self.find_successor(arg1)
+            # TODO not sure if this logic is correct
+            # in case callin ourself?
+            if(arg1 == self.node):
+                return self.successor
+            else:
+                return self.find_successor(arg1)
         elif method == 'GET_SUCCESSOR':
             print("called get_successor")
             return self.successor
