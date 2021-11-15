@@ -13,7 +13,7 @@ BUF_SZ = 4096  # socket recv arg
 BACKLOG = 100  # socket listen arg
 TEST_BASE = 43544  # for testing use port numbers on localhost at TEST_BASE+n
 
-POSSIBLE_PORTS = range (2**16)
+POSSIBLE_PORTS = range(2 ** 16)
 
 
 class ChordNode(object):
@@ -29,9 +29,12 @@ class ChordNode(object):
         # Initialize finger table/predecessor, successor, and keys
         # indexing starts at 1
 
-        node_id = chord.lookup_node(('localhost', n))
+        self.node_id = chord.lookup_node(('localhost', n))
 
-        self.finger = [None] + [FingerEntry(node_id, k) for k in range(1, M+1)]
+        print("Node ID: {}".format(self.node_id))
+
+        self.finger = [None] + [FingerEntry(self.node_id, k) for k in
+                                range(1, M + 1)]
 
         self.predecessor = None
         self.successor = None
@@ -41,19 +44,18 @@ class ChordNode(object):
         self.ip_address = "127.0.0.1"
 
         # find an empty port. Find port mapped to node id n
-        self.port = self.get_open_port(node_id)
+        self.port = self.get_open_port(self.node_id)
 
         # Peer address for our node, trying to join network
         self.full_address = (self.ip_address, self.port)
 
-        self.key_identifier = None     # hash of the key? Whats the fucking key?
+        self.key_identifier = None  # hash of the key? Whats the fucking key?
 
         self.socket = socket.socket()
 
         self.join(n)
 
     def join(self, port_number):
-        print("trying to join up")
 
         validator_address = ('localhost', port_number)
 
@@ -61,28 +63,31 @@ class ChordNode(object):
             print("New network being created.")
             print("Peer: {} joined the network".format(self.full_address))
             self.start_server()
+            self.predecessor = self.node_id
+            self.successor = self.node_id
         else:
             try:
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as validator_node:
-                    validator_node.settimeout(1.5)
-                    validator_node.connect(validator_address)
-                    self.init_fingerTable(validator_node)
+                print("trying to join up, contacting {}".format(port_number))
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(1.5)
+                    s.connect(validator_address)
+                    print("MSG BEING SENT FROM: {}".format(s.getsockname()))
+                    self.init_fingerTable(port_number, s)
                     # initialize finger table
 
             except Exception as e:
                 print("FAILED: {}".format(e))
-
-
-
 
     def get_open_port(self, n):
         possible_ports = CHORD_MAP[n]
         for port in possible_ports:
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    connected = s.connect_ex( ('localhost', port) )
+                    connected = s.connect_ex(('localhost', port))
                     if connected:
                         s.close()
+                        print("For node id: {}, found an open port {}".format(n,
+                                                                              port))
                         return port
                     else:
                         s.close()
@@ -90,11 +95,10 @@ class ChordNode(object):
                 print("Couldn't connect to port {} because it was in use."
                       " \nError: {}".format(port, e))
 
-
     def start_server(self):
         self.socket.bind(self.full_address)
         thread = threading.Thread(target=self.start_listening,
-                                       args=(self.socket,))
+                                  args=(self.socket,))
         thread.start()
 
     def start_listening(self, listening_socket):
@@ -111,28 +115,30 @@ class ChordNode(object):
     @staticmethod
     def call_rpc(target_node, message):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-
             s.settimeout(1.5)
-            s.connect(target_node) #connect to nodes address
+            s.connect(target_node)  # connect to nodes address
             # send entire buffer and serialize a HELLO msg for server
             s.sendall(pickle.dumps(message))
 
     def handle_rpc(self, client, address):
 
+        print("Message recieved")
         # recieve message from client
         message_rpc = client.recv(BUF_SZ)
 
+        print("Unloading message")
         # unpickle the message
         message = pickle.loads(message_rpc)
+        print("Message: {}".format(message))
 
         # Default argument values
         arg1 = None
         arg2 = None
 
         # decompose the message
-        if len(message == 1):
+        if len(message) == 1:
             method = message[0]
-        elif len(message == 2):
+        elif len(message) == 2:
             method = message[0]
             arg1 = message[1]
         else:
@@ -149,6 +155,7 @@ class ChordNode(object):
         client.close()
 
     def dispatch(self, method, arg1=None, arg2=None):
+        print("Dispatching")
 
         if method == 'FIND_SUCCESSOR':
             return self.find_successor(arg1)
@@ -179,29 +186,36 @@ class ChordNode(object):
         np = self.node
 
         # np_id is the numerical number associated with the node
-        while id not in range(np+1, self.successor + 1):
+        while id not in range(np + 1, self.successor + 1):
             np = self.closest_preceding_finger(id)
 
         return np
+
     def closest_preceding_finger(self, id):
         print("get neighbor")
         """
         :param id: the parameter id to find the closest preceding node to
         :return: return Key class type
         """
-        for i in range(M, 1, -1) : #4,3,2,1,0
-            if self.finger[i] in range(self.node + 1, id -1):
+        for i in range(M, 1, -1):  # 4,3,2,1,0
+            if self.finger[i] in range(self.node + 1, id - 1):
                 return self.finger[i]
 
-    def init_fingerTable(self, validator_node):
+    def init_fingerTable(self, validator_port, socket):
         print("Attempting to initialize finger "
-              "tables of new node: {}".format(self.node))
+              "tables contacting node: {}".format(self.node))
+
+        print("VALIDATOR PORT {}".format(validator_port))
 
         # n' id
-        validator_id = chord.lookup_node(validator_node)
+        validator_id = chord.lookup_node(validator_port)
+
+        print("VALIDATOR NODE ID: {}".format(validator_id))
+
         message = ['FIND_SUCCESSOR', validator_id]
 
-        successor = validator_node.sendall(pickle.dumps(message))
+        # Use socket we made to send a RPC message to a node in our network
+        successor = socket.sendall(pickle.dumps(message))
         self.finger[0] = successor
 
 
@@ -218,7 +232,7 @@ class ModRange(object):
             self.intervals = (range(self.start, self.divisor),)
         else:
             self.intervals = (
-            range(self.start, self.divisor), range(0, self.stop))
+                range(self.start, self.divisor), range(0, self.stop))
 
     def __repr__(self):
         """ Something like the interval|node charts in the paper """
@@ -240,6 +254,7 @@ class ModRange(object):
     def __iter__(self):
         return ModRangeIter(self, 0, -1)
 
+
 class ModRangeIter(object):
     """ Iterator class for ModRange """
 
@@ -259,6 +274,7 @@ class ModRangeIter(object):
         else:
             self.j += 1
         return self.mr.intervals[self.i][self.j]
+
 
 class FingerEntry(object):
 
@@ -281,6 +297,7 @@ class FingerEntry(object):
 
 PORTS = range(64888, 65535)
 
+
 class Chord(object):
     def __init__(self):
         self.node_map = {}
@@ -297,6 +314,7 @@ class Chord(object):
         node_id = int.from_bytes(marshalled_hash, byteorder='big') % NODES
 
         return node_id
+
     def generateChordMap(self):
 
         # create up to 2^m - 1 node ids
@@ -319,8 +337,7 @@ chord = Chord()
 CHORD_MAP = chord.generateChordMap()
 
 if __name__ == '__main__':
-
     args = sys.argv
     peer = ChordNode(args[1])
 
-    #run peer
+    # run peer
